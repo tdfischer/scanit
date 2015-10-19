@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+SCANIT_VERSION = '0.0.1'
+
 import pyinsane.abstract as pyinsane
 import subprocess
 import tempfile
@@ -9,133 +11,138 @@ import sys
 import threading
 import argparse
 
-parser = argparse.ArgumentParser(description='Scan It')
-parser.add_argument('name', default=None, type=unicode, help='Session name')
-parser.add_argument('-n', default=0, type=int, dest='page_count', help='Number of pages to scan')
-parser.add_argument('--color', help="Scan in color", action='store_true', default=False)
-parser.add_argument('--grey', help="Scan in gray", action='store_true', default=False)
-parser.add_argument('--gray', help="Scan in grey", action='store_true', dest='grey')
-parser.add_argument('--crop', help="Crop the scan (default)", action='store_true', dest='crop', default=True)
-parser.add_argument('--no-crop', help="Do not crop the scan", action='store_false', dest='crop')
 
-args = parser.parse_args()
+def main():
+  parser = argparse.ArgumentParser(description='Scan It %s'%(SCANIT_VERSION))
+  parser.add_argument('name', default=None, type=unicode, help='Session name')
+  parser.add_argument('-n', default=0, type=int, dest='page_count', help='Number of pages to scan')
+  parser.add_argument('--color', help="Scan in color", action='store_true', default=False)
+  parser.add_argument('--grey', help="Scan in gray", action='store_true', default=False)
+  parser.add_argument('--gray', help="Scan in grey", action='store_true', dest='grey')
+  parser.add_argument('--crop', help="Crop the scan (default)", action='store_true', dest='crop', default=True)
+  parser.add_argument('--no-crop', help="Do not crop the scan", action='store_false', dest='crop')
 
-toolsFound = True
-pageCount = args.page_count
+  args = parser.parse_args()
 
-def processPage(src, dst):
-  subprocess.call(['pngnq', src])
-  subprocess.call(['pngcrush', src+'-nq8.png', dst])
-  print "Saved to", dst
+  toolsFound = True
+  pageCount = args.page_count
 
-try:
-  subprocess.call(['pngcrush', '-version'])
-except OSError:
-  toolsFound = False
-  print "Missing: pngcrush"
-try:
-  subprocess.call(['pngnq', '-V'])
-except OSError:
-  toolsFound = False
-  print "Missing: pngnq"
-try:
-  subprocess.call(['convert', '-version'])
-except OSError:
-  toolsFound = False
-  print "Missing: convert"
+  def processPage(src, dst):
+    subprocess.call(['pngnq', src])
+    subprocess.call(['pngcrush', src+'-nq8.png', dst])
+    print "Saved to", dst
 
-if not toolsFound:
-  sys.exit(1)
+  try:
+    subprocess.call(['pngcrush', '-version'])
+  except OSError:
+    toolsFound = False
+    print "Missing: pngcrush"
+  try:
+    subprocess.call(['pngnq', '-V'])
+  except OSError:
+    toolsFound = False
+    print "Missing: pngnq"
+  try:
+    subprocess.call(['convert', '-version'])
+  except OSError:
+    toolsFound = False
+    print "Missing: convert"
 
-if args.name is None:
-  sessionName = raw_input("What filename will you give this session? [foo.pdf] ")
-else:
-  sessionName = args.name
+  if not toolsFound:
+    sys.exit(1)
 
-if sessionName == '':
-  sessionName = 'foo.pdf'
+  if args.name is None:
+    sessionName = raw_input("What filename will you give this session? [foo.pdf] ")
+  else:
+    sessionName = args.name
 
-pageNum = 0
+  if sessionName == '':
+    sessionName = 'foo.pdf'
 
-devices = pyinsane.get_devices()
+  pageNum = 0
 
-device = pyinsane.Scanner(name=devices[0].name)
+  devices = pyinsane.get_devices()
 
-for o in device.options:
-    print o, device.options[o].constraint
+  device = pyinsane.Scanner(name=devices[0].name)
 
-if device.name.startswith('v4l'):
-    device = pyinsane.Scanner(name=devices[1].name)
+  for o in device.options:
+      print o, device.options[o].constraint
 
-dpi = 300
-imgWidth = int(dpi * 8.5)
-imgHeight = int(dpi * 11)
+  if device.name.startswith('v4l'):
+      device = pyinsane.Scanner(name=devices[1].name)
 
-if 'resolution' in device.options:
-  device.options['resolution'].value = dpi
+  dpi = 300
+  imgWidth = int(dpi * 8.5)
+  imgHeight = int(dpi * 11)
 
-if args.color:
-    device.options['mode'].value = 'Color'
-elif args.grey:
-    device.options['mode'].value = 'Gray'
-else:
-    if 'LineArt' in device.options['mode'].constraint:
-        device.options['mode'].value = 'LineArt'
-    elif 'Gray' in device.options['mode'].constraint:
-        device.options['mode'].value = 'Gray'
+  if 'resolution' in device.options:
+    device.options['resolution'].value = dpi
 
-print 'Scanning with Device %s'%(device.name,)
+  if args.color:
+      device.options['mode'].value = 'Color'
+  elif args.grey:
+      device.options['mode'].value = 'Gray'
+  else:
+      if 'LineArt' in device.options['mode'].constraint:
+          device.options['mode'].value = 'LineArt'
+      elif 'Gray' in device.options['mode'].constraint:
+          device.options['mode'].value = 'Gray'
 
-processThreads = []
+  print 'Scanning with Device %s'%(device.name,)
 
-def scanPage():
-  session = None
-  nag = False
-  while session is None:
-    if not nag:
-      print "Insert document"
-      nag = True
+  processThreads = []
+
+  def scanPage():
+    session = None
+    nag = False
+    while session is None:
+      if not nag:
+        print "Insert document"
+        nag = True
+      try:
+        session = device.scan(multiple=False)
+      except StopIteration:
+        pass
+
     try:
-      session = device.scan(multiple=False)
-    except StopIteration:
+      while True:
+        session.scan.read()
+    except EOFError:
       pass
+
+    fh, tmpfile = tempfile.mkstemp()
+    os.close(fh)
+    image = session.images[0]
+    if args.crop:
+        image.crop((0, 0, imgWidth, imgHeight)).save(tmpfile, "PNG")
+    else:
+        image.save(tmpfile, "PNG")
+    return tmpfile
 
   try:
     while True:
-      session.scan.read()
-  except EOFError:
+      tmpfile = scanPage()
+      print "Wrote", tmpfile
+      output = "%s-%d.png"%(sessionName, pageNum)
+      t = threading.Thread(target=processPage, args=[tmpfile, output])
+      processThreads.append(t)
+      t.start()
+      pageNum += 1
+      if pageNum >= pageCount:
+        break
+  except KeyboardInterrupt:
     pass
 
-  fh, tmpfile = tempfile.mkstemp()
-  os.close(fh)
-  image = session.images[0]
-  if args.crop:
-      image.crop((0, 0, imgWidth, imgHeight)).save(tmpfile, "PNG")
-  else:
-      image.save(tmpfile, "PNG")
-  return tmpfile
+  for t in processThreads:
+    print "Waiting for threads to finish processing..."
+    t.join()
 
-try:
-  while True:
-    tmpfile = scanPage()
-    print "Wrote", tmpfile
-    output = "%s-%d.png"%(sessionName, pageNum)
-    t = threading.Thread(target=processPage, args=[tmpfile, output])
-    processThreads.append(t)
-    t.start()
-    pageNum += 1
-    if pageNum >= pageCount:
-      break
-except KeyboardInterrupt:
-  pass
+  fnames = map(lambda x:"%s-%d.png"%(sessionName, x), xrange(0, pageNum))
 
-for t in processThreads:
-  print "Waiting for threads to finish processing..."
-  t.join()
+  subprocess.call(['convert', ] + fnames + [sessionName+'.pdf'])
+  for f in fnames:
+    os.unlink(f)
+  print "Wrote %s.pdf"%(sessionName)
 
-fnames = map(lambda x:"%s-%d.png"%(sessionName, x), xrange(0, pageNum))
-
-subprocess.call(['convert', ] + fnames + [sessionName+'.pdf'])
-for f in fnames:
-  os.unlink(f)
-print "Wrote %s.pdf"%(sessionName)
+if __name__ == "__main__":
+  main()
