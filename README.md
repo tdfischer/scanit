@@ -2,6 +2,10 @@
 
 Scanit will scan it, whatever it might be that you want scanned.
 
+## Installation
+
+    $ pip install scanit
+
 ## Usage
 
     $ scanit some-title
