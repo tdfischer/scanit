@@ -12,11 +12,11 @@ import argparse
 parser = argparse.ArgumentParser(description='Scan It')
 parser.add_argument('name', default=None, type=unicode, help='Session name')
 parser.add_argument('-n', default=0, type=int, dest='page_count', help='Number of pages to scan')
-parser.add_argument('--color', action='store_true', default=False)
-parser.add_argument('--grey', action='store_true', default=False)
-parser.add_argument('--gray', action='store_true', dest='grey')
-parser.add_argument('--crop', action='store_true', dest='crop', default=True)
-parser.add_argument('--no-crop', action='store_false', dest='crop')
+parser.add_argument('--color', help="Scan in color", action='store_true', default=False)
+parser.add_argument('--grey', help="Scan in gray", action='store_true', default=False)
+parser.add_argument('--gray', help="Scan in grey", action='store_true', dest='grey')
+parser.add_argument('--crop', help="Crop the scan (default)", action='store_true', dest='crop', default=True)
+parser.add_argument('--no-crop', help="Do not crop the scan", action='store_false', dest='crop')
 
 args = parser.parse_args()
 
